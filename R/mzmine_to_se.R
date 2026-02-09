@@ -29,7 +29,7 @@ mzmine_to_se <- function(
   features <- read.csv(
     path_to_file
   ) %>%
-    mutate(
+    dplyr::mutate(
       id = as.character(id) # convert id from int to character
     )
 
