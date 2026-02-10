@@ -94,7 +94,7 @@ mzmine_to_se <- function(
 
   # rename to fit the file names in meta_data
 
-  sample_meta_data[,1] <- make.names(sample_meta_data[,1])
+  # sample_meta_data[,1] <- make.names(sample_meta_data[,1])  # bug risk for file or sample names starting with numbers
 
   if(any(!samples %in% sample_meta_data[,1])) {
     stop("Sample names in the feature table are not equal to sample names in the meta data. Please check to have provided the correct meta data file if any (required).")
