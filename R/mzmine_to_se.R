@@ -133,7 +133,7 @@ mzmine_to_se <- function(
 
   rowData_cols <- names(features)[!grepl("datafile[.]",names(features))]
 
-  se <- SummarizedExperiment(
+  se <- SummarizedExperiment::SummarizedExperiment(
     rowData = features[,rowData_cols],
     assays = assays_list,
     colData = sample_meta_data
