@@ -97,7 +97,7 @@ mzmine_to_se <- function(
   sample_meta_data[,1] <- make.names(sample_meta_data[,1])
 
   if(any(!samples %in% sample_meta_data[,1])) {
-    stop("Sample names in the feature table are not equal to sample names in the meta data")
+    stop("Sample names in the feature table are not equal to sample names in the meta data ")
   } else {
     sample_meta_data <- sample_meta_data[
       match(samples, sample_meta_data[,1]),
