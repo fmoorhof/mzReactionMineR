@@ -1,11 +1,12 @@
 # main.R - Example workflow for mzReactionMineR
 # This script demonstrates the usage of the mzReactionMineR package
 
-# Load required packages
-# Source all R scripts from the local R/ directory
-r_scripts <- list.files("R", pattern = "\\.R$", full.names = TRUE)
-sapply(r_scripts, source)
-# when existing import paths should remain they need to be imported here in main such as library(dplyr), else dplyr:: import changes required?
+# Import of libraries required here in main file
+library(mzReactionMineR)
+library(SummarizedExperiment)
+library(dplyr)
+library(tidyr)
+library(magrittr)
 
 # ---- 1. Data Import ----
 # Replace with the path to your mock or real data files

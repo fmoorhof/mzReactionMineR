@@ -32,7 +32,7 @@ mzmine_to_se <- function(
     path_to_file,
     sep = sep
   ) %>%
-    dplyr::mutate(
+    mutate(
       id = as.character(id) # convert id from int to character 
     )
 
