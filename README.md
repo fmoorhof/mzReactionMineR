@@ -63,4 +63,5 @@ install.packages("devtools")
 devtools::install(
   "path/to/your/mzReactionMineR",
   dependencies = TRUE,
-)```
+)
+```
