@@ -32,7 +32,7 @@ mzmine_to_se <- function(
     path_to_file
   ) %>%
     dplyr::mutate(
-      id = as.character(id) # convert id from int to character
+      id = as.character(id) # convert id from int to character 
     )
 
   # extract columns with specified assay name
