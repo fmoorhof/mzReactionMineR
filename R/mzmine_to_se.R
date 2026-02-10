@@ -20,7 +20,7 @@
 
 mzmine_to_se <- function(
     path_to_file,
-    sep = ";",
+    sep = ",",
     sample_meta_data = NULL,
     assays = NULL,
     filenames = "filename"
