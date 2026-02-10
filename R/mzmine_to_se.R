@@ -7,6 +7,7 @@
 #' @importFrom dplyr %>% mutate group_by
 #' @importFrom SummarizedExperiment SummarizedExperiment assays rowData colData
 #' @param path_to_file path to the mzmine feature table
+#' @param sep character. separator used in the mzmine .csv feature table
 #' @param sample_meta_data data.frame. sample meta data to become colData
 #'     the first columnn has to be the sample names
 #' @param assays character vector. what result type to use. (i.e. "height")
@@ -18,6 +19,7 @@
 
 mzmine_to_se <- function(
     path_to_file,
+    sep = ";",
     sample_meta_data = NULL,
     assays = NULL
 ) {
@@ -27,7 +29,8 @@ mzmine_to_se <- function(
   print("Loading mzMine feature table")
 
   features <- read.csv(
-    path_to_file
+    path_to_file,
+    sep = sep
   ) %>%
     dplyr::mutate(
       id = as.character(id) # convert id from int to character 
