@@ -37,6 +37,12 @@ se_filtered <- filterSe(object = se,
 cat("\nFiltered SummarizedExperiment:\n")
 print(se_filtered)
 
+# ---- Export Filtered Data ----
+# Export the filtered assay matrix (area) with rowData for mzMine re-import
+filtered_export <- cbind(as.data.frame(rowData(se_filtered)), as.data.frame(assay(se_filtered, "area")))
+write.csv(filtered_export, file = "filtered_for_mzmine.csv", row.names = FALSE)
+cat("\nFiltered data exported to filtered_for_mzmine.csv\n")
+
 # ---- 3. Normalization ----
 # If normalizePQN returns a SummarizedExperiment, use it directly
 norm_matrix <- normalizePQN(assay(se_filtered, "area"), measure = "median")
@@ -44,6 +50,12 @@ assay(se_filtered, "area") <- norm_matrix
 se_norm <- se_filtered
 cat("\nNormalized SummarizedExperiment:\n")
 print(se_norm)
+
+# ---- Export Normalized Data ----
+# Export the normalized assay matrix (area) with rowData for mzMine re-import
+norm_export <- cbind(as.data.frame(rowData(se_norm)), as.data.frame(assay(se_norm, "area")))
+write.csv(norm_export, file = "normalized_for_mzmine.csv", row.names = FALSE)
+cat("\nNormalized data exported to normalized_for_mzmine.csv\n")
 
 # ---- 4. Statistical Analysis ----
 # Example: ANOVA using Limma (anovaLimma)
@@ -79,3 +91,5 @@ for (plot_name in names(qc_result$plots)) {
   )
 }
 cat("\nQC plots saved to ./qc_plots_R/\n")
+
+# !!!!!maybe skip all the last part and invest in peak annotation approaches that i can integrate later
