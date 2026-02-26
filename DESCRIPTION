@@ -10,7 +10,7 @@ Description: This package contains various functions used during analysis of
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
-RoxygenNote: 7.3.2
+RoxygenNote: 7.3.3
 Imports: 
     dplyr,
     tidyr,
@@ -22,6 +22,13 @@ Imports:
     rlang,
     methods,
     stats,
-    Spectra
+    Spectra,
+    MsCoreUtils
 Additional_repositories: 
-    https://bioconductor.org/packages/3.20/bioc
+    https://bioconductor.org/packages/3.21/bioc
+Suggests: 
+    testthat (>= 3.0.0)
+Config/testthat/edition: 3
+RemoteType: local
+RemotePkgRef: local::../../packages/mzReactionMineR/
+RemoteUrl: C:/Users/druesche/Documents/packages/mzReactionMineR

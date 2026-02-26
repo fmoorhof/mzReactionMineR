@@ -8,16 +8,24 @@ intensity threshold.}
 \usage{
 filter_spec(
   sps,
-  intensity_threshold = 100,
+  intensity_threshold = 0,
+  intensity_threshold_pct = 1,
   min_peaks = 4,
-  max_peaks = 250,
-  max_pct = 0.95
+  max_peaks = 50,
+  max_pct = 0.95,
+  remove_precursor = TRUE,
+  tolerance = 0.005,
+  ppm = 20
 )
 }
 \arguments{
 \item{sps}{spectrum object. Input data}
 
-\item{intensity_threshold}{numeric. Peaks below will be removed.}
+\item{intensity_threshold}{numeric. minimum intensity threshold. Defaults to 0
+only meaningful for non-normalized data.}
+
+\item{intensity_threshold_pct}{numeric. minimum intensity in \% of max peak
+Peaks below will be removed.}
 
 \item{min_peaks}{Integer. Minimum number of peaks after thresholding.}
 
@@ -25,6 +33,12 @@ filter_spec(
 Choses the most intense peaks if more than max_peaks are present.}
 
 \item{max_pct}{numeric. Maximum percentage of peaks to keep, if n_peaks > max_peaks.}
+
+\item{remove_precursor}{logical. If TRUE, precursor peaks (+/- 10 mz) will be removed.}
+
+\item{tolerance}{numeric. Tolerance for precursor peak removal in Da.}
+
+\item{ppm}{numeric. ppm for precursor peak removal.}
 }
 \value{
 A spectrum object with filtered peaks.

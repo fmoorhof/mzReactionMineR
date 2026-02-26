@@ -3,7 +3,8 @@
 #' A wrapper function to calculate all pairwise modifeid cosine scores based on
 #'     the Spectra package.
 #'
-#'@importFrom Spectra join_gnps precursorMz peaksData gnps acquisitionNum
+#'@importFrom Spectra join_gnps precursorMz peaksData acquisitionNum
+#'@importFrom MsCoreUtils gnps join_gnps
 #'
 #' @param sps Spectra object. Must contain multiple MS/MS spectra
 #' @param tolerance numeric. Absolute mz tolerance

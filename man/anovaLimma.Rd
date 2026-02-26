@@ -9,7 +9,8 @@ anovaLimma(
   assay = NULL,
   blocking_variables = NULL,
   test_variables = NULL,
-  padj_method = "fdr"
+  padj_method = "fdr",
+  return_colums = c("id", "rt", "mz")
 )
 }
 \arguments{
@@ -26,6 +27,8 @@ colData(object) that should be used as test variables.}
 
 \item{padj_method}{Character. The method used to adjust the p-values.
 Default is "fdr".}
+
+\item{return_colums}{Character vector. The columns from rowData(object) that are reported in results. Default is c("id", "rt", "mz").}
 }
 \value{
 Returns a data.frame that contains the ANOVA table.

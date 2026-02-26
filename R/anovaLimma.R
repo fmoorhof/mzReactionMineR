@@ -14,6 +14,7 @@
 #'     colData(object) that should be used as test variables.
 #' @param padj_method Character. The method used to adjust the p-values.
 #'     Default is "fdr".
+#' @param return_colums Character vector. The columns from rowData(object) that are reported in results. Default is c("id", "rt", "mz").
 #' @return Returns a data.frame that contains the ANOVA table.
 #' @export
 
@@ -21,7 +22,8 @@ anovaLimma <- function(object = NULL,
                        assay = NULL,
                        blocking_variables = NULL,
                        test_variables = NULL,
-                       padj_method = "fdr") {
+                       padj_method = "fdr",
+                       return_colums = c("id", "rt", "mz")) {
 
   sample_data <- as.data.frame(SummarizedExperiment::colData(object))
 
@@ -79,7 +81,7 @@ anovaLimma <- function(object = NULL,
       coef = colnames(X)[length(unique(sample_data[,unlist(blocking_variables)])):(length(colnames(X)))]
     )
   ) %>%
-    select(id, rt, mz, 'F', P.Value, adj.P.Val)
+    select(return_colums, 'F', P.Value, adj.P.Val)
 
   return(anova_res)
 

@@ -4,12 +4,14 @@
 \alias{se_to_long}
 \title{se_to_long}
 \usage{
-se_to_long(object, assay)
+se_to_long(object, assay, filename = "filename")
 }
 \arguments{
 \item{object}{a SummarizedExperiment object}
 
 \item{assay}{a character string indicating the assay to be used}
+
+\item{filename}{a character string indicating the name of the column in the colData that corresponds to the assay columns. Default is "filename".}
 }
 \value{
 a data.frame in long format

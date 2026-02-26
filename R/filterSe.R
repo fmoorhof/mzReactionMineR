@@ -67,7 +67,7 @@ filterSe <- function(
       values_to = "Value"
     ) %>%
     mutate(
-      Value = ifelse(Value > min_abundance, Value, 0)
+      Value = ifelse(Value > min_abundance, 1, 0)
     ) %>%
     inner_join(
       as.data.frame(colData(object))
@@ -89,8 +89,8 @@ filterSe <- function(
         ) %>%
         group_by(!!sym(id_col)) %>%
         summarize(
-          Value = sum(.data$Value),
-          na.rm = TRUE
+          Value = sum(.data$Value,
+                      na.rm = TRUE)
         ) %>%
         filter(
           Value == 0
@@ -121,9 +121,9 @@ filterSe <- function(
 
   ids <- data_long_grouped %>%
     summarize(
-      Value = sum(.data$Value),
-      cutoff = max(floor(n()*min_pct), min_n),
-      na.rm = TRUE
+      Value = sum(.data$Value,
+                  na.rm = TRUE),
+      cutoff = max(floor(n()*min_pct), min_n)
     ) %>%
     filter(
       Value >= .data$cutoff

@@ -4,7 +4,12 @@
 \alias{mzmine_to_se}
 \title{mzmine_to_se}
 \usage{
-mzmine_to_se(path_to_file, sample_meta_data = NULL, assays = NULL)
+mzmine_to_se(
+  path_to_file,
+  sample_meta_data = NULL,
+  assays = NULL,
+  filenames = "filename"
+)
 }
 \arguments{
 \item{path_to_file}{path to the mzmine feature table}
@@ -13,11 +18,14 @@ mzmine_to_se(path_to_file, sample_meta_data = NULL, assays = NULL)
 the first columnn has to be the sample names}
 
 \item{assays}{character vector. what result type to use. (i.e. "height")}
+
+\item{filenames}{character. name of the column in the meta data that
+corresponds to the sample names in the feature table}
 }
 \value{
 a summarizedExperiment Object
 }
 \description{
 Convert mzMine feature table to a SummarizedExperiment object. Assumes the
-"Export to CSV (modular)" was used
+"Export to CSV (modular)" was used.
 }
