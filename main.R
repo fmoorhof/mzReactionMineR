@@ -9,30 +9,46 @@ library(tidyr)
 
 # ---- 1. Data Import ----
 # Replace with the path to your mock or real data files
-features_file <- "mock_data/peaklist2_mzmine.csv"
+features_file <- "mock_data/peaklist52_mzmine.csv"  # peaklist5_mzmine.csv"
 sample_meta_data_file <- "mock_data/plate5.csv"  # first column needs to be called filename fo QC plotting (hardcoded)
 
 # Import data (mzmine_to_se), make sure to specify the correct field separator of .csv on error
-sample_meta_data <- read.csv(sample_meta_data_file, sep = ";")
+sample_meta_data <- read.csv(sample_meta_data_file, sep = ",")
 se <- mzmine_to_se(features_file,
-                  sep = ";",
+                  sep = ",",
                   sample_meta_data = sample_meta_data,
 )  # assays = "area")
 cat("Imported SummarizedExperiment:\n")
 print(se)
 
+
+# ---- Blank Subtraction ----
+# Use blankSubtractionSE to filter features based on blank samples (last column in colData)
+blank_sample <- tail(rownames(colData(se)), 1)
+se_blanked <- blankSubtractionSE(
+  object = se,
+  assay = "area",
+  sample_col = colnames(colData(se))[1],
+  blanks = blank_sample,
+  ratio = 3,
+  ratio_type = "maximum",
+  min_detection_blank = 1,
+  id_col = "id"
+)
+cat("\nBlank subtraction applied.\n")
+
 # ---- 2. Data Processing ----
 # Filter SummarizedExperiment (filterSe)
-se_filtered <- filterSe(object = se,
+se_filtered <- filterSe(object = se_blanked,
                         assay = "area",
-                        sample_col = colnames(colData(se))[1], # use first colData column as sample_col
-                        group_col = "none",
-                        not_in = "none",
-                        min_abundance = 10,
-                        min_pct = 0.8,
+                        sample_col = colnames(colData(se_blanked))[1], # use first colData column as sample_col
+                        # group_col = "none",
+                        # not_in = tail(rownames(colData(se_blanked)), 1),
+                        min_abundance = 10000,
+                        min_pct = 0.0001,
                         min_n = 1L,
-                        mz_range = c(100, 250),
-                        rt_range = c(1.0, 2.5)
+                        mz_range = c(200, 600),
+                        rt_range = c(2.0, 6.0)
                         )
 cat("\nFiltered SummarizedExperiment:\n")
 print(se_filtered)
@@ -77,7 +93,7 @@ if ("Group" %in% colnames(colData(se_norm))) {
 qc_result <- QC_plots(
   path_to_file = features_file, # path to the mzMine feature table
   sample_meta_data = sample_meta_data,
-  sep = ";",
+  sep = ",",
   what = c("rt_dev", "rt_dev_sample"),  # mz fails on: Error in FUN(left, right) : non-numeric argument to binary operator
   return = TRUE
 )
