@@ -3,12 +3,15 @@
 import argparse
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Literal
+from typing import Literal
 
 import pandas as pd
 
 
 META_STOP_COL = "height"  # sample columns start after this in filtered_for_mzmine.csv
+DEFAULT_RT_COL = "rt"
+DEFAULT_POOLS_RT_COL = "Retention time"
+DEFAULT_POOLS_POOL_COL = "Pool"
 
 
 def _parse_float_series(series: pd.Series) -> pd.Series:
@@ -19,16 +22,27 @@ def _parse_float_series(series: pd.Series) -> pd.Series:
     return pd.to_numeric(s, errors="coerce")
 
 
+def _unique_preserve_order(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for v in values:
+        if v not in seen:
+            seen.add(v)
+            out.append(v)
+    return out
+
+
 def _read_filtered(path: Path) -> pd.DataFrame:
     df = pd.read_csv(path)
 
-    required = ["mz_range.min", "mz_range.max", "id"]
+    required = ["mz_range.min", "mz_range.max", "id", DEFAULT_RT_COL]
     missing = [c for c in required if c not in df.columns]
     if missing:
         raise ValueError(f"Missing required columns in {path}: {missing}")
 
     df["mz_range.min"] = _parse_float_series(df["mz_range.min"])
     df["mz_range.max"] = _parse_float_series(df["mz_range.max"])
+    df[DEFAULT_RT_COL] = _parse_float_series(df[DEFAULT_RT_COL])
     df["id"] = df["id"].astype(str)
 
     if META_STOP_COL not in df.columns:
@@ -57,9 +71,19 @@ def _read_pools(path: Path) -> pd.DataFrame:
     if missing:
         raise ValueError(f"Missing required columns in {path}: {missing}")
 
-    df = df[["Name", "M+H"]].copy()
+    keep_cols = ["Name", "M+H"]
+    if DEFAULT_POOLS_RT_COL in df.columns:
+        keep_cols.append(DEFAULT_POOLS_RT_COL)
+    if DEFAULT_POOLS_POOL_COL in df.columns:
+        keep_cols.append(DEFAULT_POOLS_POOL_COL)
+
+    df = df[keep_cols].copy()
     df["Name"] = df["Name"].astype(str).str.strip()
     df["M+H"] = _parse_float_series(df["M+H"])
+    if DEFAULT_POOLS_RT_COL in df.columns:
+        df[DEFAULT_POOLS_RT_COL] = _parse_float_series(df[DEFAULT_POOLS_RT_COL])
+    if DEFAULT_POOLS_POOL_COL in df.columns:
+        df[DEFAULT_POOLS_POOL_COL] = df[DEFAULT_POOLS_POOL_COL].astype(str).str.strip()
     df = df.dropna(subset=["M+H"]).reset_index(drop=True)
 
     if df.empty:
@@ -73,33 +97,79 @@ class Match:
     feature_idx: int
     substrate: str
     pool_mh: float
+    pool_rt: float
+    feature_rt: float
+    delta_rt: float
+    pool: str | None
 
 
 def _match_features_to_pools(
     filtered: pd.DataFrame,
     pools: pd.DataFrame,
     tolerance: float,
+    rt_tol: float,
+    rt_col: str = DEFAULT_RT_COL,
+    pools_rt_col: str = DEFAULT_POOLS_RT_COL,
 ) -> list[Match]:
+    if rt_tol <= 0:
+        raise ValueError("rt_tol must be > 0")
+    if rt_col not in filtered.columns:
+        raise ValueError(f"Filtered table is missing RT column '{rt_col}'")
+    if pools_rt_col not in pools.columns:
+        raise ValueError(
+            f"Pools table is missing RT column '{pools_rt_col}'. "
+            f"Either add it to pools.csv or switch RT matching off (not supported in this mode)."
+        )
+
     matches: list[Match] = []
 
     mh_values = pools["M+H"].to_numpy()
     names = pools["Name"].to_list()
+    rt_values = pools[pools_rt_col].to_numpy()
+    pools_values = pools[DEFAULT_POOLS_POOL_COL].to_list() if DEFAULT_POOLS_POOL_COL in pools.columns else [None] * len(pools)
 
     mz_min = filtered["mz_range.min"].to_numpy()
     mz_max = filtered["mz_range.max"].to_numpy()
+    feature_rt = filtered[rt_col].to_numpy()
 
     for i in range(len(filtered)):
         lo = mz_min[i]
         hi = mz_max[i]
-        if pd.isna(lo) or pd.isna(hi):
+        rt_f = feature_rt[i]
+        if pd.isna(lo) or pd.isna(hi) or pd.isna(rt_f):
             continue
 
         lo2 = lo - tolerance
         hi2 = hi + tolerance
 
-        for substrate, mh in zip(names, mh_values):
-            if lo2 <= mh <= hi2:
-                matches.append(Match(feature_idx=i, substrate=substrate, pool_mh=float(mh)))
+        best_idx: int | None = None
+        best_delta_rt: float | None = None
+
+        for j, (substrate, mh, rt_p, pool_code) in enumerate(zip(names, mh_values, rt_values, pools_values)):
+            if pd.isna(rt_p):
+                continue  # hard RT filter: cannot match without pool RT
+            if not (lo2 <= mh <= hi2):
+                continue
+            delta = abs(float(rt_f) - float(rt_p))
+            if delta > rt_tol:
+                continue
+
+            if best_idx is None or delta < (best_delta_rt or float("inf")):
+                best_idx = j
+                best_delta_rt = delta
+
+        if best_idx is not None:
+            matches.append(
+                Match(
+                    feature_idx=i,
+                    substrate=names[best_idx],
+                    pool_mh=float(mh_values[best_idx]),
+                    pool_rt=float(rt_values[best_idx]),
+                    feature_rt=float(rt_f),
+                    delta_rt=float(best_delta_rt),
+                    pool=pools_values[best_idx],
+                )
+            )
 
     return matches
 
@@ -121,14 +191,43 @@ def build_area_matrix(
     filtered: pd.DataFrame,
     pools: pd.DataFrame,
     tolerance: float,
+    rt_tol: float,
     aggregation: Literal["max", "sum", "mean"] = "max",
+    include_all_substrates: bool = True,
+    substrate_order: Literal["pools-file", "alphabetical", "custom"] = "pools-file",
+    substrate_order_file: Path | None = None,
+    rt_col: str = DEFAULT_RT_COL,
+    pools_rt_col: str = DEFAULT_POOLS_RT_COL,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     stop_idx = filtered.columns.get_loc(META_STOP_COL)
     sample_cols = list(filtered.columns[stop_idx + 1 :])
 
-    matches = _match_features_to_pools(filtered=filtered, pools=pools, tolerance=tolerance)
+    if substrate_order == "custom":
+        if substrate_order_file is None:
+            raise ValueError("substrate_order='custom' requires substrate_order_file")
+        custom = [
+            line.strip()
+            for line in substrate_order_file.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        expected_substrates = custom
+    elif substrate_order == "alphabetical":
+        expected_substrates = sorted(_unique_preserve_order(pools["Name"].astype(str).tolist()))
+    else:
+        expected_substrates = _unique_preserve_order(pools["Name"].astype(str).tolist())
+
+    matches = _match_features_to_pools(
+        filtered=filtered,
+        pools=pools,
+        tolerance=tolerance,
+        rt_tol=rt_tol,
+        rt_col=rt_col,
+        pools_rt_col=pools_rt_col,
+    )
     if not matches:
         empty = pd.DataFrame(index=sample_cols)
+        if include_all_substrates and expected_substrates:
+            empty = empty.reindex(columns=expected_substrates)
         return empty, pd.DataFrame()
 
     # Long form: one row per (sample, substrate, matched feature)
@@ -149,6 +248,10 @@ def build_area_matrix(
                     "pool_mh": m.pool_mh,
                     "mz_range_min": lo,
                     "mz_range_max": hi,
+                    "rt_feature": m.feature_rt,
+                    "rt_pool": m.pool_rt,
+                    "delta_rt": m.delta_rt,
+                    "pool": m.pool,
                 }
             )
 
@@ -162,7 +265,11 @@ def build_area_matrix(
     )
 
     matrix = grouped.pivot(index="sample", columns="substrate", values="area").sort_index()
-    matrix = matrix.sort_index(axis=1)
+
+    if include_all_substrates and expected_substrates:
+        matrix = matrix.reindex(columns=expected_substrates)
+    else:
+        matrix = matrix.sort_index(axis=1)
 
     return matrix, long_df
 
@@ -171,7 +278,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description=(
             "Match filtered mzMine feature table peaks to pool substrates by M+H. "
-            "A pool entry matches a feature if pool M+H is within [mz_range.min, mz_range.max] ± tolerance. "
+            "A pool entry matches a feature if pool M+H is within [mz_range.min, mz_range.max] ± tolerance and RT is within ± rt_tol. "
             "Outputs a sample×substrate area matrix."
         )
     )
@@ -192,6 +299,36 @@ def main() -> None:
         type=float,
         default=0.0125,
         help="Allowed absolute deviation (in m/z units). Default: 0.0125",
+    )
+    parser.add_argument(
+        "--rt-tol",
+        type=float,
+        default=0.1,
+        help="Allowed absolute deviation in retention time (same units as filtered 'rt'). Default: 0.1",
+    )
+    parser.add_argument(
+        "--pool",
+        type=str,
+        default=None,
+        help="Optional pool code to filter pools.csv (matches the 'Pool' column).",
+    )
+    parser.add_argument(
+        "--include-all-substrates",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Ensure output matrix has a fixed substrate column set (fills missing with NaN). Default: enabled.",
+    )
+    parser.add_argument(
+        "--substrate-order",
+        choices=["pools-file", "alphabetical", "custom"],
+        default="pools-file",
+        help="Column order for substrates in the output matrix.",
+    )
+    parser.add_argument(
+        "--substrate-order-file",
+        type=Path,
+        default=None,
+        help="If --substrate-order custom: path to a text file with one substrate name per line.",
     )
     parser.add_argument(
         "--aggregation",
@@ -217,11 +354,24 @@ def main() -> None:
     filtered = _read_filtered(args.filtered)
     pools = _read_pools(args.pools)
 
+    if args.pool is not None:
+        if DEFAULT_POOLS_POOL_COL not in pools.columns:
+            raise ValueError(
+                f"--pool was provided but pools.csv has no column '{DEFAULT_POOLS_POOL_COL}'."
+            )
+        pools = pools[pools[DEFAULT_POOLS_POOL_COL] == args.pool].reset_index(drop=True)
+        if pools.empty:
+            raise ValueError(f"No pools rows matched --pool {args.pool!r}")
+
     matrix, long_df = build_area_matrix(
         filtered=filtered,
         pools=pools,
         tolerance=args.tolerance,
+        rt_tol=args.rt_tol,
         aggregation=args.aggregation,
+        include_all_substrates=args.include_all_substrates,
+        substrate_order=args.substrate_order,
+        substrate_order_file=args.substrate_order_file,
     )
 
     matrix.to_csv(args.out, index=True)
