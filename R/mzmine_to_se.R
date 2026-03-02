@@ -7,6 +7,7 @@
 #' @importFrom dplyr %>% mutate group_by
 #' @importFrom SummarizedExperiment SummarizedExperiment assays rowData colData
 #' @param path_to_file path to the mzmine feature table
+#' @param sep character. separator used in the mzmine .csv feature table
 #' @param sample_meta_data data.frame. sample meta data to become colData
 #'     the first columnn has to be the sample names
 #' @param filenames character. name of the column in the meta data that
@@ -19,6 +20,7 @@
 
 mzmine_to_se <- function(
     path_to_file,
+    sep = ",",
     sample_meta_data = NULL,
     assays = NULL,
     filenames = "filename"
@@ -29,10 +31,11 @@ mzmine_to_se <- function(
   print("Loading mzMine feature table")
 
   features <- read.csv(
-    path_to_file
+    path_to_file,
+    sep = sep
   ) %>%
     mutate(
-      id = as.character(id) # convert id from int to character
+      id = as.character(id) # convert id from int to character 
     )
 
   # extract columns with specified assay name
@@ -130,7 +133,7 @@ mzmine_to_se <- function(
 
   rowData_cols <- names(features)[!grepl("datafile[.]",names(features))]
 
-  se <- SummarizedExperiment(
+  se <- SummarizedExperiment::SummarizedExperiment(
     rowData = features[,rowData_cols],
     assays = assays_list,
     colData = sample_meta_data
