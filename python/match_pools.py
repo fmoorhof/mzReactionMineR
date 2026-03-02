@@ -12,6 +12,7 @@ META_STOP_COL = "height"  # sample columns start after this in filtered_for_mzmi
 DEFAULT_RT_COL = "rt"
 DEFAULT_POOLS_RT_COL = "Retention time"
 DEFAULT_POOLS_POOL_COL = "Pool"
+DEFAULT_XLSX_OUT = "matched_pool_areas.xlsx"
 
 
 def _parse_float_series(series: pd.Series) -> pd.Series:
@@ -59,6 +60,10 @@ def _read_filtered(path: Path) -> pd.DataFrame:
     for col in sample_cols:
         df[col] = _parse_float_series(df[col])
 
+    # Optional columns (only used for reporting in extra sheets)
+    if "mz" in df.columns:
+        df["mz"] = _parse_float_series(df["mz"])
+
     return df
 
 
@@ -101,6 +106,15 @@ class Match:
     feature_rt: float
     delta_rt: float
     pool: str | None
+
+
+def _safe_sheet_name(name: str) -> str:
+    # Excel sheet names: max 31 chars, cannot contain: : \ / ? * [ ]
+    bad = [":", "\\", "/", "?", "*", "[", "]"]
+    for ch in bad:
+        name = name.replace(ch, "-")
+    name = name.strip() or "Sheet"
+    return name[:31]
 
 
 def _match_features_to_pools(
@@ -237,6 +251,7 @@ def build_area_matrix(
         feature_id = row.get("id")
         lo = row.get("mz_range.min")
         hi = row.get("mz_range.max")
+        mz_feature = row.get("mz") if "mz" in filtered.columns else float("nan")
 
         for sample in sample_cols:
             records.append(
@@ -248,6 +263,7 @@ def build_area_matrix(
                     "pool_mh": m.pool_mh,
                     "mz_range_min": lo,
                     "mz_range_max": hi,
+                    "mz_feature": mz_feature,
                     "rt_feature": m.feature_rt,
                     "rt_pool": m.pool_rt,
                     "delta_rt": m.delta_rt,
@@ -264,14 +280,70 @@ def build_area_matrix(
         .rename(columns={"area": "area"})
     )
 
-    matrix = grouped.pivot(index="sample", columns="substrate", values="area").sort_index()
-
+    matrix = grouped.pivot(index="sample", columns="substrate", values="area")
+    # Preserve input order (samples as they appear in the feature table; substrates as configured)
+    matrix = matrix.reindex(index=sample_cols)
     if include_all_substrates and expected_substrates:
         matrix = matrix.reindex(columns=expected_substrates)
     else:
-        matrix = matrix.sort_index(axis=1)
+        matrix = matrix.reindex(columns=sorted(matrix.columns.tolist()))
 
     return matrix, long_df
+
+
+def build_info_sheets(
+    long_df: pd.DataFrame,
+    sample_order: list[str],
+    substrate_order: list[str],
+) -> dict[str, pd.DataFrame]:
+    """Create per-field matrices (same shape as the area matrix).
+
+    For metadata (rt/mz/etc), we select the feature with the highest area for each
+    (sample, substrate) and report its metadata.
+    """
+    sheets: dict[str, pd.DataFrame] = {}
+    if long_df.empty:
+        return sheets
+
+    # Pick the max-area feature per (sample, substrate) to represent rt/mz/etc.
+    tmp = long_df.dropna(subset=["area"]).copy()
+    if tmp.empty:
+        return sheets
+    idx = tmp.groupby(["sample", "substrate"])["area"].idxmax()
+    best = tmp.loc[idx]
+
+    def pivot_field(field: str) -> pd.DataFrame:
+        df = best.pivot(index="sample", columns="substrate", values=field)
+        df = df.reindex(index=sample_order, columns=substrate_order)
+        return df
+
+    # One sheet per info field
+    sheets["feature_id"] = pivot_field("feature_id")
+    sheets["mz_feature"] = pivot_field("mz_feature")
+    sheets["mz_range_min"] = pivot_field("mz_range_min")
+    sheets["mz_range_max"] = pivot_field("mz_range_max")
+    sheets["rt_feature"] = pivot_field("rt_feature")
+    sheets["rt_pool"] = pivot_field("rt_pool")
+    sheets["delta_rt"] = pivot_field("delta_rt")
+    sheets["pool_mh"] = pivot_field("pool_mh")
+    sheets["pool"] = pivot_field("pool")
+
+    return sheets
+
+
+def write_excel_multi_sheet(
+    out_xlsx: Path,
+    area_matrix: pd.DataFrame,
+    info_sheets: dict[str, pd.DataFrame],
+) -> None:
+    out_xlsx.parent.mkdir(parents=True, exist_ok=True)
+
+    with pd.ExcelWriter(out_xlsx, engine="openpyxl") as writer:
+        # First sheet: the current "short" area matrix
+        area_matrix.to_excel(writer, sheet_name="area")
+
+        for name, df in info_sheets.items():
+            df.to_excel(writer, sheet_name=_safe_sheet_name(name))
 
 
 def main() -> None:
@@ -304,7 +376,7 @@ def main() -> None:
         "--rt-tol",
         type=float,
         default=0.1,
-        help="Allowed absolute deviation in retention time (same units as filtered 'rt'). Default: 0.1",
+        help="Allowed absolute deviation in retention time (same units as filtered 'rt', most likely minutes). Default: 0.1",
     )
     parser.add_argument(
         "--pool",
@@ -337,16 +409,22 @@ def main() -> None:
         help="How to combine multiple matching features per (sample, substrate).",
     )
     parser.add_argument(
+        "--out-xlsx",
+        type=Path,
+        default=Path(DEFAULT_XLSX_OUT),
+        help="Output XLSX path containing multiple sheets (area first, then RT/mz/etc).",
+    )
+    parser.add_argument(
         "--out",
         type=Path,
-        default=Path("matched_pool_areas.csv"),
-        help="Output CSV path for the sample×substrate matrix.",
+        default=None,
+        help="(Optional) Output CSV path for the sample×substrate area matrix.",
     )
     parser.add_argument(
         "--out-long",
         type=Path,
-        default=Path("matched_pool_areas_long.csv"),
-        help="Output CSV path for the long match table (traceability).",
+        default=None,
+        help="(Optional) Output CSV path for the long match table (traceability).",
     )
 
     args = parser.parse_args()
@@ -374,15 +452,34 @@ def main() -> None:
         substrate_order_file=args.substrate_order_file,
     )
 
-    matrix.to_csv(args.out, index=True)
-    if not long_df.empty:
-        long_df.to_csv(args.out_long, index=False)
-
-    print(f"Wrote matrix: {args.out} (shape={matrix.shape})")
-    if not long_df.empty:
-        print(f"Wrote matches: {args.out_long} (rows={len(long_df)})")
+    # Preserve explicit sample/substrate orders in all sheets
+    stop_idx = filtered.columns.get_loc(META_STOP_COL)
+    sample_cols = list(filtered.columns[stop_idx + 1 :])
+    if args.substrate_order == "custom" and args.substrate_order_file is not None:
+        substrate_cols = [
+            line.strip()
+            for line in args.substrate_order_file.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+    elif args.substrate_order == "alphabetical":
+        substrate_cols = sorted(_unique_preserve_order(pools["Name"].astype(str).tolist()))
     else:
-        print("No matches found; wrote empty matrix.")
+        substrate_cols = _unique_preserve_order(pools["Name"].astype(str).tolist())
+
+    info_sheets = build_info_sheets(
+        long_df=long_df,
+        sample_order=sample_cols,
+        substrate_order=substrate_cols,
+    )
+    write_excel_multi_sheet(args.out_xlsx, matrix, info_sheets)
+    print(f"Wrote Excel workbook: {args.out_xlsx} (area shape={matrix.shape})")
+
+    if args.out is not None:
+        matrix.to_csv(args.out, index=True)
+        print(f"Wrote area CSV: {args.out}")
+    if args.out_long is not None and not long_df.empty:
+        long_df.to_csv(args.out_long, index=False)
+        print(f"Wrote long CSV: {args.out_long} (rows={len(long_df)})")
 
 
 if __name__ == "__main__":
