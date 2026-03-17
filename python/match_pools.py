@@ -15,10 +15,42 @@ DEFAULT_POOLS_POOL_COL = "Pool"
 DEFAULT_XLSX_OUT = "matched_pool_areas.xlsx"
 
 
+def _normalize_sample_key(value: str) -> str:
+    s = str(value).strip()
+    if s.startswith("datafile."):
+        s = s[len("datafile.") :]
+    # R sometimes prefixes column names that start with digits with 'X'
+    if len(s) > 1 and s[0] == "X" and s[1].isdigit():
+        s = s[1:]
+    # keep only the filename part if paths slipped in
+    s = Path(s).name
+    return s
+
+
+def _read_plate_subpools(
+    path: Path,
+    filename_col: str = "filename",
+    subpool_col: str = "Subpool",
+) -> dict[str, str]:
+    df = pd.read_csv(path)
+    missing = [c for c in [filename_col, subpool_col] if c not in df.columns]
+    if missing:
+        raise ValueError(f"Missing required columns in {path}: {missing}")
+
+    out: dict[str, str] = {}
+    for _, row in df.iterrows():
+        fn = _normalize_sample_key(row[filename_col])
+        sp = str(row[subpool_col]).strip()
+        if fn and sp and sp.lower() != "nan":
+            out[fn] = sp
+            out[Path(fn).stem] = sp  # also allow matching without extension
+    return out
+
+
 def _parse_float_series(series: pd.Series) -> pd.Series:
     """Parse numeric columns that may contain 'NA', empty, or decimal commas."""
     s = series.astype(str).str.strip()
-    s = s.replace({"": pd.NA, "NA": pd.NA, "NaN": pd.NA, "nan": pd.NA})
+    s = s.replace(["", "NA", "NaN", "nan"], pd.NA)
     s = s.str.replace(",", ".", regex=False)
     return pd.to_numeric(s, errors="coerce")
 
@@ -53,7 +85,11 @@ def _read_filtered(path: Path) -> pd.DataFrame:
         )
 
     stop_idx = df.columns.get_loc(META_STOP_COL)
-    sample_cols = list(df.columns[stop_idx + 1 :])
+    if not isinstance(stop_idx, int):
+        raise ValueError(
+            f"Column '{META_STOP_COL}' appears multiple times in {path}; cannot infer sample columns reliably."
+        )
+    sample_cols = list(df.columns)[stop_idx + 1 :]
     if not sample_cols:
         raise ValueError(f"No sample columns found after '{META_STOP_COL}' in {path}")
 
@@ -125,63 +161,56 @@ def _match_features_to_pools(
     rt_col: str = DEFAULT_RT_COL,
     pools_rt_col: str = DEFAULT_POOLS_RT_COL,
 ) -> list[Match]:
-    if rt_tol <= 0:
-        raise ValueError("rt_tol must be > 0")
-    if rt_col not in filtered.columns:
-        raise ValueError(f"Filtered table is missing RT column '{rt_col}'")
-    if pools_rt_col not in pools.columns:
-        raise ValueError(
-            f"Pools table is missing RT column '{pools_rt_col}'. "
-            f"Either add it to pools.csv or switch RT matching off (not supported in this mode)."
-        )
-
+    # IMPORTANT: We do *not* require an RT hit. RT is used only to rank matches.
     matches: list[Match] = []
 
     mh_values = pools["M+H"].to_numpy()
     names = pools["Name"].to_list()
-    rt_values = pools[pools_rt_col].to_numpy()
-    pools_values = pools[DEFAULT_POOLS_POOL_COL].to_list() if DEFAULT_POOLS_POOL_COL in pools.columns else [None] * len(pools)
+    rt_values = (
+        pools[pools_rt_col].to_numpy()
+        if pools_rt_col in pools.columns
+        else [float("nan")] * len(pools)
+    )
+    pools_values = (
+        pools[DEFAULT_POOLS_POOL_COL].to_list()
+        if DEFAULT_POOLS_POOL_COL in pools.columns
+        else [None] * len(pools)
+    )
 
     mz_min = filtered["mz_range.min"].to_numpy()
     mz_max = filtered["mz_range.max"].to_numpy()
-    feature_rt = filtered[rt_col].to_numpy()
+    feature_rt = (
+        filtered[rt_col].to_numpy() if rt_col in filtered.columns else [float("nan")] * len(filtered)
+    )
 
     for i in range(len(filtered)):
         lo = mz_min[i]
         hi = mz_max[i]
-        rt_f = feature_rt[i]
-        if pd.isna(lo) or pd.isna(hi) or pd.isna(rt_f):
+        rt_f = feature_rt[i] if i < len(feature_rt) else float("nan")
+        if pd.isna(lo) or pd.isna(hi):
             continue
 
         lo2 = lo - tolerance
         hi2 = hi + tolerance
 
-        best_idx: int | None = None
-        best_delta_rt: float | None = None
-
-        for j, (substrate, mh, rt_p, pool_code) in enumerate(zip(names, mh_values, rt_values, pools_values)):
-            if pd.isna(rt_p):
-                continue  # hard RT filter: cannot match without pool RT
+        for substrate, mh, rt_p, pool_code in zip(names, mh_values, rt_values, pools_values):
             if not (lo2 <= mh <= hi2):
                 continue
-            delta = abs(float(rt_f) - float(rt_p))
-            if delta > rt_tol:
-                continue
 
-            if best_idx is None or delta < (best_delta_rt or float("inf")):
-                best_idx = j
-                best_delta_rt = delta
+            if not pd.isna(rt_f) and not pd.isna(rt_p):
+                delta = abs(float(rt_f) - float(rt_p))
+            else:
+                delta = float("nan")
 
-        if best_idx is not None:
             matches.append(
                 Match(
                     feature_idx=i,
-                    substrate=names[best_idx],
-                    pool_mh=float(mh_values[best_idx]),
-                    pool_rt=float(rt_values[best_idx]),
-                    feature_rt=float(rt_f),
-                    delta_rt=float(best_delta_rt),
-                    pool=pools_values[best_idx],
+                    substrate=substrate,
+                    pool_mh=float(mh),
+                    pool_rt=float(rt_p) if not pd.isna(rt_p) else float("nan"),
+                    feature_rt=float(rt_f) if not pd.isna(rt_f) else float("nan"),
+                    delta_rt=float(delta) if not pd.isna(delta) else float("nan"),
+                    pool=pool_code,
                 )
             )
 
@@ -212,9 +241,14 @@ def build_area_matrix(
     substrate_order_file: Path | None = None,
     rt_col: str = DEFAULT_RT_COL,
     pools_rt_col: str = DEFAULT_POOLS_RT_COL,
+    sample_to_subpool: dict[str, str] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     stop_idx = filtered.columns.get_loc(META_STOP_COL)
-    sample_cols = list(filtered.columns[stop_idx + 1 :])
+    if not isinstance(stop_idx, int):
+        raise ValueError(
+            f"Column '{META_STOP_COL}' appears multiple times in filtered table; cannot infer sample columns reliably."
+        )
+    sample_cols = list(filtered.columns)[stop_idx + 1 :]
 
     if substrate_order == "custom":
         if substrate_order_file is None:
@@ -254,6 +288,33 @@ def build_area_matrix(
         mz_feature = row.get("mz") if "mz" in filtered.columns else float("nan")
 
         for sample in sample_cols:
+            sample_key = _normalize_sample_key(sample)
+            sample_subpool = None
+            if sample_to_subpool is not None:
+                sample_subpool = sample_to_subpool.get(sample_key) or sample_to_subpool.get(Path(sample_key).stem)
+
+            rt_hit = False
+            if rt_tol and rt_tol > 0 and pd.notna(m.delta_rt):
+                rt_hit = bool(float(m.delta_rt) <= float(rt_tol))
+
+            pool_hit = False
+            if sample_subpool is not None and m.pool is not None and str(m.pool).strip() != "":
+                pool_hit = str(m.pool).strip() == str(sample_subpool).strip()
+
+            if sample_subpool is None:
+                tier = 1 if rt_hit else 2
+            else:
+                tier = 1 if (pool_hit and rt_hit) else 2 if pool_hit else 3 if rt_hit else 4
+
+            if pool_hit and rt_hit:
+                match_class = "mz+rt+pool"
+            elif pool_hit:
+                match_class = "mz+pool"
+            elif rt_hit:
+                match_class = "mz+rt"
+            else:
+                match_class = "mz"
+
             records.append(
                 {
                     "sample": sample,
@@ -268,16 +329,27 @@ def build_area_matrix(
                     "rt_pool": m.pool_rt,
                     "delta_rt": m.delta_rt,
                     "pool": m.pool,
+                    "rt_hit": rt_hit,
+                    "sample_subpool": sample_subpool,
+                    "pool_hit": pool_hit if sample_subpool is not None else pd.NA,
+                    "tier": tier,
+                    "match_class": match_class,
                 }
             )
 
     long_df = pd.DataFrame.from_records(records)
 
-    # Aggregate (in case multiple features match a substrate for a sample)
+    # Aggregate within the *best* tier per (sample, substrate)
+    best_tier = (
+        long_df.groupby(["sample", "substrate"], as_index=False)
+        .agg(best_tier=("tier", "min"))
+    )
+    tmp = long_df.merge(best_tier, on=["sample", "substrate"], how="left")
+    tmp = tmp[tmp["tier"] == tmp["best_tier"]]
+
     grouped = (
-        long_df.groupby(["sample", "substrate"], as_index=False)["area"]
+        tmp.groupby(["sample", "substrate"], as_index=False)["area"]
         .apply(lambda s: _aggregate(s, aggregation))
-        .rename(columns={"area": "area"})
     )
 
     matrix = grouped.pivot(index="sample", columns="substrate", values="area")
@@ -305,10 +377,17 @@ def build_info_sheets(
     if long_df.empty:
         return sheets
 
-    # Pick the max-area feature per (sample, substrate) to represent rt/mz/etc.
+    # Pick a representative feature per (sample, substrate):
+    #   - restrict to the best tier first (pool/rt hierarchy)
+    #   - then pick the max-area feature
     tmp = long_df.dropna(subset=["area"]).copy()
     if tmp.empty:
         return sheets
+
+    if "tier" in tmp.columns:
+        min_tier = tmp.groupby(["sample", "substrate"])["tier"].transform("min")
+        tmp = tmp[tmp["tier"] == min_tier]
+
     idx = tmp.groupby(["sample", "substrate"])["area"].idxmax()
     best = tmp.loc[idx]
 
@@ -328,6 +407,18 @@ def build_info_sheets(
     sheets["pool_mh"] = pivot_field("pool_mh")
     sheets["pool"] = pivot_field("pool")
 
+    # Matching hierarchy/debugging
+    if "tier" in best.columns:
+        sheets["tier"] = pivot_field("tier")
+    if "match_class" in best.columns:
+        sheets["match_class"] = pivot_field("match_class")
+    if "rt_hit" in best.columns:
+        sheets["rt_hit"] = pivot_field("rt_hit")
+    if "pool_hit" in best.columns:
+        sheets["pool_hit"] = pivot_field("pool_hit")
+    if "sample_subpool" in best.columns:
+        sheets["sample_subpool"] = pivot_field("sample_subpool")
+
     return sheets
 
 
@@ -335,12 +426,17 @@ def write_excel_multi_sheet(
     out_xlsx: Path,
     area_matrix: pd.DataFrame,
     info_sheets: dict[str, pd.DataFrame],
+    long_df: pd.DataFrame | None = None,
 ) -> None:
     out_xlsx.parent.mkdir(parents=True, exist_ok=True)
 
     with pd.ExcelWriter(out_xlsx, engine="openpyxl") as writer:
         # First sheet: the current "short" area matrix
         area_matrix.to_excel(writer, sheet_name="area")
+
+        # Optional: full long table for traceability in Excel
+        if long_df is not None and not long_df.empty:
+            long_df.to_excel(writer, sheet_name="matches_long", index=False)
 
         for name, df in info_sheets.items():
             df.to_excel(writer, sheet_name=_safe_sheet_name(name))
@@ -350,8 +446,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description=(
             "Match filtered mzMine feature table peaks to pool substrates by M+H. "
-            "A pool entry matches a feature if pool M+H is within [mz_range.min, mz_range.max] ± tolerance and RT is within ± rt_tol. "
-            "Outputs a sample×substrate area matrix."
+            "A pool entry matches a feature if pool M+H is within [mz_range.min, mz_range.max] ± tolerance. "
+            "RT and plate subpool are used to rank/prioritize matches (not to drop m/z hits). "
+            "Outputs a sample×substrate area matrix plus traceability sheets."
         )
     )
     parser.add_argument(
@@ -363,7 +460,7 @@ def main() -> None:
     parser.add_argument(
         "--pools",
         type=Path,
-        default=Path("pools.csv"),
+        default=Path("mock_data/pools.csv"),
         help="Path to pools.csv (semicolon-separated, decimal commas).",
     )
     parser.add_argument(
@@ -377,6 +474,24 @@ def main() -> None:
         type=float,
         default=0.05,
         help="Allowed absolute deviation in retention time (same units as filtered 'rt', most likely minutes). Default: 0.05",
+    )
+    parser.add_argument(
+        "--plate",
+        type=Path,
+        default=Path("mock_data/plate_rep1.csv"),
+        help="Optional plate metadata CSV (e.g. mock_data/plate5.csv) to prioritize matches by sample subpool.",
+    )
+    parser.add_argument(
+        "--plate-filename-col",
+        type=str,
+        default="filename",
+        help="Column in --plate that contains the filename (must match sample column names). Default: filename",
+    )
+    parser.add_argument(
+        "--plate-subpool-col",
+        type=str,
+        default="Subpool",
+        help="Column in --plate that contains the subpool code. Default: Subpool",
     )
     parser.add_argument(
         "--pool",
@@ -432,6 +547,14 @@ def main() -> None:
     filtered = _read_filtered(args.filtered)
     pools = _read_pools(args.pools)
 
+    sample_to_subpool = None
+    if args.plate is not None:
+        sample_to_subpool = _read_plate_subpools(
+            args.plate,
+            filename_col=args.plate_filename_col,
+            subpool_col=args.plate_subpool_col,
+        )
+
     if args.pool is not None:
         if DEFAULT_POOLS_POOL_COL not in pools.columns:
             raise ValueError(
@@ -450,11 +573,16 @@ def main() -> None:
         include_all_substrates=args.include_all_substrates,
         substrate_order=args.substrate_order,
         substrate_order_file=args.substrate_order_file,
+        sample_to_subpool=sample_to_subpool,
     )
 
     # Preserve explicit sample/substrate orders in all sheets
     stop_idx = filtered.columns.get_loc(META_STOP_COL)
-    sample_cols = list(filtered.columns[stop_idx + 1 :])
+    if not isinstance(stop_idx, int):
+        raise ValueError(
+            f"Column '{META_STOP_COL}' appears multiple times in filtered table; cannot infer sample columns reliably."
+        )
+    sample_cols = list(filtered.columns)[stop_idx + 1 :]
     if args.substrate_order == "custom" and args.substrate_order_file is not None:
         substrate_cols = [
             line.strip()
@@ -471,7 +599,7 @@ def main() -> None:
         sample_order=sample_cols,
         substrate_order=substrate_cols,
     )
-    write_excel_multi_sheet(args.out_xlsx, matrix, info_sheets)
+    write_excel_multi_sheet(args.out_xlsx, matrix, info_sheets, long_df=long_df)
     print(f"Wrote Excel workbook: {args.out_xlsx} (area shape={matrix.shape})")
 
     if args.out is not None:

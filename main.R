@@ -22,7 +22,7 @@ cat("Imported SummarizedExperiment:\n")
 print(se)
 
 
-# ---- Blank Subtraction ----
+# ---- Blank filter ----
 # Use blankSubtractionSE to filter features based on blank samples (last column in colData)
 blank_sample <- tail(rownames(colData(se)), 1)
 se_blanked <- blankSubtractionSE(
@@ -35,7 +35,7 @@ se_blanked <- blankSubtractionSE(
   min_detection_blank = 1,
   id_col = "id"
 )
-cat("\nBlank subtraction applied.\n")
+cat("\nBlank filtering applied.\n")
 
 # ---- 2. Data Processing ----
 # Filter SummarizedExperiment (filterSe)
