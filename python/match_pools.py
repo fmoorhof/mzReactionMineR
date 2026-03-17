@@ -375,8 +375,8 @@ def main() -> None:
     parser.add_argument(
         "--rt-tol",
         type=float,
-        default=0.1,
-        help="Allowed absolute deviation in retention time (same units as filtered 'rt', most likely minutes). Default: 0.1",
+        default=0.05,
+        help="Allowed absolute deviation in retention time (same units as filtered 'rt', most likely minutes). Default: 0.05",
     )
     parser.add_argument(
         "--pool",
