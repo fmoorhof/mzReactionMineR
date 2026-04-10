@@ -24,6 +24,7 @@
 QC_plots <- function(
     path_to_file,
     sample_meta_data,
+    sep = ",",
     what = c(
       "rt_dev",
       "mz_dev",
@@ -38,7 +39,8 @@ QC_plots <- function(
   print("Loading mzMine feature table")
 
   features <- utils::read.csv(
-    path_to_file
+    path_to_file,
+    sep = sep
   ) %>%
     mutate(
       id = as.character(id) # convert id from int to character
