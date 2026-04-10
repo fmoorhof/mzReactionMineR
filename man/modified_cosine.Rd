@@ -17,6 +17,6 @@ modified_cosine(sps, tolerance = 0, ppm = 10)
 An upper triangular matrix of modified cosine scores
 }
 \description{
-A wrapper function to calculate all pairwise modifeid cosine scores based on
+A wrapper function to calculate all pairwise modified cosine scores based on
 the Spectra package.
 }

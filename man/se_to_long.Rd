@@ -17,6 +17,6 @@ se_to_long(object, assay, filename = "filename")
 a data.frame in long format
 }
 \description{
-Generates a long formdata.frame from a summarized experiment produced by
+Generates a long form data.frame from a summarized experiment produced by
 mzmine_to_se
 }

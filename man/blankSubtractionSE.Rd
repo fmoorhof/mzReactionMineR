@@ -7,12 +7,13 @@
 blankSubtractionSE(
   object = NULL,
   assay = NULL,
-  sample_col = "filename",
   blanks = NULL,
-  ratio = 3,
   ratio_type = "maximum",
+  ratio = 3,
   min_detection_blank = 1,
-  id_col = "id"
+  remove = TRUE,
+  id_col = "id",
+  sample_col = "filename"
 )
 }
 \arguments{
@@ -20,17 +21,19 @@ blankSubtractionSE(
 
 \item{assay}{Character. what assay to use. (i.e. "height")}
 
-\item{sample_col}{Character. Column name in colData that contains sample names (i.e. "filename")}
-
 \item{blanks}{Character vector. Names of blank samples in the sample_col column of colData}
-
-\item{ratio}{Numeric. Minimum ratio of sample signal to blank signal for a feature to be retained. Default is 3.}
 
 \item{ratio_type}{Character. Method to calculate the blank signal for each feature. Options are "maximum", "mean", or "median". Default is "maximum".}
 
+\item{ratio}{Numeric. Minimum ratio of sample signal to blank signal for a feature to be retained. Default is 3.}
+
 \item{min_detection_blank}{Integer. Minimum number of blank samples in which a feature must be detected (i.e. non-NA value) to be considered for filtering. Default is 1.}
 
+\item{remove}{Logical. Whether to remove the blank samples from the resulting SummarizedExperiment object. Default is TRUE.}
+
 \item{id_col}{Character. Column name in rowData that contains unique feature identifiers (i.e. "id")}
+
+\item{sample_col}{Character. Column name in rowData that contains unique feature identifiers (i.e. "sample")}
 }
 \value{
 A SummarizedExperiment object with features filtered based on the specified ratio.

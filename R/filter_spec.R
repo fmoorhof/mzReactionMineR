@@ -18,8 +18,6 @@
 #' @param ppm numeric. ppm for precursor peak removal.
 #' @returns A spectrum object with filtered peaks.
 #' @export
-#'
-#' @examples
 filter_spec <- function(sps,
                         intensity_threshold = 0,
                         intensity_threshold_pct = 1,

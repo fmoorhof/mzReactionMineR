@@ -23,7 +23,8 @@ Imports:
     methods,
     stats,
     Spectra,
-    MsCoreUtils
+    MsCoreUtils,
+	igraph
 Additional_repositories: 
     https://bioconductor.org/packages/3.21/bioc
 Suggests: 

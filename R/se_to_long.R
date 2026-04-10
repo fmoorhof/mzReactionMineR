@@ -1,6 +1,6 @@
 #' se_to_long
 #'
-#' Generates a long formdata.frame from a summarized experiment produced by
+#' Generates a long form data.frame from a summarized experiment produced by
 #'     mzmine_to_se
 #'
 #' @importFrom dplyr %>% inner_join

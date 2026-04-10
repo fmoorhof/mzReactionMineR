@@ -12,7 +12,9 @@
 #' @param ratio  Numeric. Minimum ratio of sample signal to blank signal for a feature to be retained. Default is 3.
 #' @param ratio_type Character. Method to calculate the blank signal for each feature. Options are "maximum", "mean", or "median". Default is "maximum".
 #' @param min_detection_blank Integer. Minimum number of blank samples in which a feature must be detected (i.e. non-NA value) to be considered for filtering. Default is 1.
+#' @param remove Logical. Whether to remove the blank samples from the resulting SummarizedExperiment object. Default is TRUE.
 #' @param id_col Character. Column name in rowData that contains unique feature identifiers (i.e. "id")
+#' @param sample_col Character. Column name in rowData that contains unique feature identifiers (i.e. "sample")
 #'
 #' @returns A SummarizedExperiment object with features filtered based on the specified ratio.
 #' @export
@@ -21,12 +23,13 @@
 blankSubtractionSE <- function(
     object = NULL,
     assay = NULL,
-    sample_col = "filename",
     blanks = NULL,
-    ratio = 3,
     ratio_type = "maximum",
+    ratio = 3,
     min_detection_blank = 1,
-    id_col = "id"
+    remove = TRUE,
+    id_col = "id",
+    sample_col = "filename"
 ) {
 
 
@@ -111,21 +114,26 @@ blankSubtractionSE <- function(
     # filter based on ratio
 
     ids_to_remove <- data_blank %>%
-      inner_join(
+      left_join(
         data_samples,
         by = id_col,
         suffix = c("_blank", "_sample")
       ) %>%
-      filter(.data$Value_sample < ratio * .data$Value_blank) %>%
+      filter(.data$Value_sample < (ratio * .data$Value_blank) | is.na(.data$Value_sample)) %>%
       pull(id_col)
 
     if(length(ids_to_remove) > 0){
       result <- object[!rowData(object)[[id_col]] %in% ids_to_remove,]
-      return(result)
     } else {
       warning("No features were filtered based on the provided criteria. Returning original object.")
-      return(object)
+      result <- object
     }
+
+    if(remove) {
+      result <- result[,!colData(result)[[sample_col]] %in% blanks]
+    }
+
+    return(result)
 
 
   } # end
