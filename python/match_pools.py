@@ -4,6 +4,8 @@ import argparse
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
+from openpyxl import Workbook, load_workbook
+from openpyxl.utils.dataframe import dataframe_to_rows
 
 import pandas as pd
 
@@ -430,16 +432,38 @@ def write_excel_multi_sheet(
 ) -> None:
     out_xlsx.parent.mkdir(parents=True, exist_ok=True)
 
-    with pd.ExcelWriter(out_xlsx, engine="openpyxl") as writer:
-        # First sheet: the current "short" area matrix
-        area_matrix.to_excel(writer, sheet_name="area")
+    if out_xlsx.exists():
+        wb = load_workbook(out_xlsx)
+    else:
+        wb = Workbook()
+        # Remove default empty sheet in newly created workbooks
+        if wb.sheetnames == ["Sheet"]:
+            wb.remove(wb["Sheet"])
 
-        # Optional: full long table for traceability in Excel
-        if long_df is not None and not long_df.empty:
-            long_df.to_excel(writer, sheet_name="matches_long", index=False)
+    def _append_df(df: pd.DataFrame, sheet_name: str, index: bool) -> None:
+        ws = wb[sheet_name] if sheet_name in wb.sheetnames else wb.create_sheet(sheet_name)
+        clean_df = df.astype(object).where(pd.notna(df), None)
 
-        for name, df in info_sheets.items():
-            df.to_excel(writer, sheet_name=_safe_sheet_name(name))
+        if ws.max_row <= 1 and ws.max_column <= 1 and ws.cell(1, 1).value is None:
+            rows = dataframe_to_rows(clean_df, index=index, header=True)
+        else:
+            rows = dataframe_to_rows(clean_df, index=index, header=False)
+
+        for row in rows:
+            if any(v is not None for v in row):
+                ws.append(row)
+
+    # First sheet: append current "short" area matrix
+    _append_df(area_matrix, "area", index=True)
+
+    # Optional: append full long table for traceability in Excel
+    if long_df is not None and not long_df.empty:
+        _append_df(long_df, "matches_long", index=False)
+
+    for name, df in info_sheets.items():
+        _append_df(df, _safe_sheet_name(name), index=True)
+
+    wb.save(out_xlsx)
 
 
 def main() -> None:

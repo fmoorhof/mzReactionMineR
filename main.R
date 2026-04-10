@@ -59,53 +59,6 @@ filtered_export <- cbind(as.data.frame(rowData(se_filtered)), as.data.frame(assa
 write.csv(filtered_export, file = "filtered_for_mzmine.csv", row.names = FALSE)
 cat("\nFiltered data exported to filtered_for_mzmine.csv\n")
 
-# ---- 3. Normalization ----
-# If normalizePQN returns a SummarizedExperiment, use it directly
-norm_matrix <- normalizePQN(assay(se_filtered, "area"), measure = "median")
-assay(se_filtered, "area") <- norm_matrix
-se_norm <- se_filtered
-cat("\nNormalized SummarizedExperiment:\n")
-print(se_norm)
-
-# ---- Export Normalized Data ----
-# Export the normalized assay matrix (area) with rowData for mzMine re-import
-norm_export <- cbind(as.data.frame(rowData(se_norm)), as.data.frame(assay(se_norm, "area")))
-write.csv(norm_export, file = "normalized_for_mzmine.csv", row.names = FALSE)
-cat("\nNormalized data exported to normalized_for_mzmine.csv\n")
-
-# ---- 4. Statistical Analysis ----
-# Example: ANOVA using Limma (anovaLimma)
-if ("Group" %in% colnames(colData(se_norm))) {
-  anova_res <- anovaLimma(
-    object = se_norm,
-    assay = "area",
-    blocking_variables = NULL,
-    test_variables = c("Group")
-  )
-  cat("\nANOVA Results:\n")
-  print(head(anova_res))
-} else {
-  cat("\nNo 'Group' column found in colData. Skipping ANOVA.\n")
-}
-
-# ---- 5. Visualization ----
-# QC Plots (QC_plots)
-qc_result <- QC_plots(
-  path_to_file = features_file, # path to the mzMine feature table
-  sample_meta_data = sample_meta_data,
-  sep = ",",
-  what = c("rt_dev", "rt_dev_sample"),  # mz fails on: Error in FUN(left, right) : non-numeric argument to binary operator
-  return = TRUE
-)
-# Save each ggplot in the returned list to a file
-if (!dir.exists("./qc_plots_R/")) dir.create("./qc_plots_R/")
-for (plot_name in names(qc_result$plots)) {
-  ggplot2::ggsave(
-    filename = paste0("./qc_plots_R/", plot_name, ".pdf"),
-    plot = qc_result$plots[[plot_name]],
-    width = 7, height = 5
-  )
-}
-cat("\nQC plots saved to ./qc_plots_R/\n")
-
-# !!!!!maybe skip all the last part and invest in peak annotation approaches that i can integrate later
+# ---- 3. Execute Python Script ----
+# Run match_pools.py script which is processing filtered_for_mzmine.csv and creates matched_pool_areas.xlsx
+system("python Python/match_pools.py")

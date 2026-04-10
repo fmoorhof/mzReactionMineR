@@ -6,3 +6,5 @@
 .DS_Store
 .quarto
 data/
+mock_data/
+initial_versions/
