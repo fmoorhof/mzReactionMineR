@@ -10,6 +10,7 @@ normalizeIS(
   rt = NULL,
   mz = NULL,
   id = "none",
+  type = "median",
   mz_tolerance = c(0.005, 10),
   rt_tolerance = 0.1,
   new_assay_name = "is_normalized",
@@ -31,6 +32,9 @@ normalizeIS(
 \item{id}{Character. The id of the internal standard. If "none", the function
 will find the closest feature to the provided rt and mz values.
 Default is "none".}
+
+\item{type}{Either "mean" oder "median". How to calculate the reference IS
+value for normalization. Default is "median".}
 
 \item{mz_tolerance}{Numeric vector of length 2. Absolute and relative (ppm)
 m/z tolerance for finding the internal standard.}
@@ -60,4 +64,14 @@ object based on the intensities of an internal standard. The internal
 standard can be specified by its id, or by its rt and mz values. The
 function will find the closest feature to the provided rt and mz values, and
 use its intensities for normalization.
+}
+\details{
+Normalization is defined as:
+
+\deqn{\hat{Y_ij} = Y_ij\frac{\overline{S}{S_j}}}
+
+Where \eqn{\hat{Y_ij}} is the normalized value of peak i in sample j,
+\eqn{Y_ij} is the original value  of peak i in sample j, \eqn{S_j} is the
+internal standard intensity in sample j and \eqn{\overline{S}} is the mean
+or median of the internal standard across samples.
 }

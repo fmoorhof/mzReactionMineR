@@ -4,12 +4,14 @@
 \alias{join_se_sirius}
 \title{join_se_sirius}
 \usage{
-join_se_sirius(object = NULL, path_to_sirius = NULL)
+join_se_sirius(object = NULL, path_to_sirius = NULL, id_col = "id")
 }
 \arguments{
 \item{object}{a SummarizedExperiment object}
 
 \item{path_to_sirius}{path to the SIRIUS output file that should be joined}
+
+\item{id_col}{character. The name of the column in the rowData that contains the feature ids. Default is "id".}
 }
 \value{
 a SummarizedExperiment object with the SIRIUS data joined to the

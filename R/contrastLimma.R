@@ -26,6 +26,8 @@ contrastLimma <- function(object = NULL,
 
   sample_data <- as.data.frame(SummarizedExperiment::colData(object))
 
+  sample_data[[contrast_variable]] <- make.names(sample_data[[contrast_variable]])
+
   formula_string <- paste(
     " ~ 0 +",
     paste(contrast_variable, collapse = " + ")
@@ -62,12 +64,31 @@ contrastLimma <- function(object = NULL,
 
   }
 
-  treatments <- unique(sample_data[,contrast_variable][!sample_data[,contrast_variable] %in% controls])
+  if(!is.null(controls)) {
+    treatments <- unique(
+      sample_data[,contrast_variable][
+        !sample_data[,contrast_variable] %in% controls
+      ]
+    )
 
-  contrasts = expand.grid(
-    controls,
-    treatments
-  )
+    contrasts = expand.grid(
+      controls,
+      treatments
+    )
+
+  } else {
+
+    treatments <- unique(
+      sample_data[,contrast_variable]
+    )
+
+    contrasts = expand.grid(
+      treatments,
+      treatments
+    )
+
+  }
+
   contrasts <- contrasts %>%
     mutate(
       contrast = paste0(.data$Var2, "-", .data$Var1)

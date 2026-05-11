@@ -91,7 +91,7 @@ blankSubtractionSE <- function(
       filter(
         !(.data[[sample_col]] %in% blanks),
         !is.na(.data[["Value"]]),
-        id %in% data_blank[[id_col]]
+        .data[[id_col]] %in% data_blank[[id_col]]
       ) %>%
       group_by(.data[[id_col]])
 

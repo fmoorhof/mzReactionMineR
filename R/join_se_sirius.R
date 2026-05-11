@@ -9,6 +9,7 @@
 #'
 #' @param object a SummarizedExperiment object
 #' @param path_to_sirius path to the SIRIUS output file that should be joined
+#' @param id_col character. The name of the column in the rowData that contains the feature ids. Default is "id".
 #'
 #' @returns a SummarizedExperiment object with the SIRIUS data joined to the
 #' rowData
@@ -16,16 +17,17 @@
 #'
 join_se_sirius <- function(
     object = NULL,
-    path_to_sirius = NULL
+    path_to_sirius = NULL,
+    id_col = "id"
 ) {
   canopus_structure_summary <- utils::read.delim(
     path_to_sirius
   ) %>%
     dplyr::rename(
-      "id" = .data$mappingFeatureId
+      id_col = .data$mappingFeatureId
     ) %>%
     dplyr::mutate(
-      id = as.character(.data$id)
+      id_col = as.character(.data[[id_col]])
     )
   new_rowData <- dplyr::left_join(
     base::as.data.frame(

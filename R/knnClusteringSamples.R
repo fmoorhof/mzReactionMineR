@@ -4,7 +4,7 @@
 #' SummarizedExperiment object based on a k-nearest neighbor graph.
 #'
 #' @importFrom SummarizedExperiment rowData assays
-#' @importFrom MatrixGenerics rowVars
+#' @importFrom MatrixGenerics rowVars rowMaxs
 #' @importFrom igraph cluster_louvain membership
 #' @importFrom stats prcomp dist
 #'

@@ -6,8 +6,18 @@
 #'  function will find the closest feature to the provided rt and mz values, and
 #'  use its intensities for normalization.
 #'
+#'  Normalization is defined as:
+#'
+#'    \deqn{\hat{Y_ij} = Y_ij\frac{\overline{S}{S_j}}}
+#'
+#'  Where \eqn{\hat{Y_ij}} is the normalized value of peak i in sample j,
+#'  \eqn{Y_ij} is the original value  of peak i in sample j, \eqn{S_j} is the
+#'  internal standard intensity in sample j and \eqn{\overline{S}} is the mean
+#'  or median of the internal standard across samples.
+#'
 #' @importFrom dplyr %>% select mutate filter slice_min pull between across
 #' @importFrom SummarizedExperiment SummarizedExperiment assays rowData assays<-
+#' @importFrom stats median
 #'
 #' @param object A SummarizedExperiment object
 #' @param assay Character. The name of the assay to be normalized.
@@ -16,6 +26,8 @@
 #' @param id Character. The id of the internal standard. If "none", the function
 #'        will find the closest feature to the provided rt and mz values.
 #'        Default is "none".
+#' @param type Either "mean" oder "median". How to calculate the reference IS
+#'        value for normalization. Default is "median".
 #' @param mz_tolerance Numeric vector of length 2. Absolute and relative (ppm)
 #'        m/z tolerance for finding the internal standard.
 #' @param rt_tolerance Numeric. Absolute retention time tolerance for finding
@@ -37,6 +49,7 @@ normalizeIS <- function(
     rt = NULL,
     mz = NULL,
     id = "none",
+    type = "median",
     mz_tolerance = c(0.005, 10),
     rt_tolerance = 0.1,
     new_assay_name = "is_normalized",
@@ -66,13 +79,26 @@ normalizeIS <- function(
   is_intensities <- get_intensities_id(
     object = object,
     assay = assay,
-    id = is_id
+    id = is_id,
+    id_col = id_col
+  )
+
+  if(any(is.na(is_intensities))) {
+
+    stop("Internal standard absent in some samples.")
+
+  }
+
+  correction_factor <- switch(
+    type,
+    mean = is_intensities/mean(is_intensities),
+    median = is_intensities/median(is_intensities)
   )
 
   new_object <- divide_by_feature(
     object = object,
     assay = assay,
-    vector = is_intensities,
+    vector = correction_factor,
     new_assay_name = new_assay_name
     )
 

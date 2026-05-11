@@ -53,7 +53,8 @@ plotIS <- function(
     y = get_intensities_id(
       object = object,
       assay = assay,
-      id = is_id
+      id = is_id,
+      id_col = id_col
     )
   )
 
